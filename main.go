@@ -5,10 +5,13 @@ import (
 	"linear-tui/client"
 	"os"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type model struct {
+	spinner  spinner.Model
 	issues   []client.Issue
 	loading  bool
 	errorMsg errorMsg
@@ -16,7 +19,11 @@ type model struct {
 }
 
 func initialModel() model {
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	return model{
+		spinner: s,
 		loading: true,
 	}
 }
@@ -31,7 +38,7 @@ type errorMsg struct {
 }
 
 func (m model) Init() tea.Cmd {
-	return fetchIssuesCmd
+	return tea.Batch(fetchIssuesCmd, m.spinner.Tick)
 }
 
 func fetchIssuesCmd() tea.Msg {
@@ -63,14 +70,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.issues = msg.issues
 		m.errorMsg = msg.errorMsg
 		m.loading = false
+
+	default:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 	}
 
 	return m, nil
+
 }
 
 func (m model) View() string {
 	if m.loading {
-		return "Loading...\n"
+		return fmt.Sprintf("Loading issues...\n%s", m.spinner.View())
 	}
 
 	if m.errorMsg != (errorMsg{}) {
