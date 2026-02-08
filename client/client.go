@@ -31,7 +31,7 @@ func FetchIssues() ([]Issue, error) {
 		return nil, fmt.Errorf("LINEAR_API_KEY not set")
 	}
 
-	query := `{"query": "{ issues(first: 50) { nodes { id title state { name } priority } } }" }`
+	query := `{"query": "{ issues(first: 20) { nodes { id title state { name } priority } } }" }`
 
 	body := bytes.NewBuffer([]byte(query))
 

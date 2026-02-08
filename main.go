@@ -2,26 +2,46 @@ package main
 
 import (
 	"fmt"
+	"linear-tui/client"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 type model struct {
-	choices  []string
+	issues   []client.Issue
+	loading  bool
+	errorMsg errorMsg
 	cursor   int
-	selected map[int]struct{}
 }
 
-func initalModel() model {
+func initialModel() model {
 	return model{
-		choices:  []string{"a", "b", "c"},
-		selected: make(map[int]struct{}),
+		loading: true,
 	}
 }
 
+type issuesLoadedMsg struct {
+	issues   []client.Issue
+	errorMsg errorMsg
+}
+
+type errorMsg struct {
+	message string
+}
+
 func (m model) Init() tea.Cmd {
-	return nil
+	return fetchIssuesCmd
+}
+
+func fetchIssuesCmd() tea.Msg {
+	issues, err := client.FetchIssues()
+
+	if err != nil {
+		return issuesLoadedMsg{nil, errorMsg{err.Error()}}
+	}
+
+	return issuesLoadedMsg{issues, errorMsg{}}
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -35,37 +55,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if m.cursor < len(m.choices)-1 {
+			if m.cursor < len(m.issues)-1 {
 				m.cursor++
 			}
-		case "enter", " ":
-			_, ok := m.selected[m.cursor]
-			if ok {
-				delete(m.selected, m.cursor)
-			} else {
-				m.selected[m.cursor] = struct{}{}
-			}
 		}
+	case issuesLoadedMsg:
+		m.issues = msg.issues
+		m.errorMsg = msg.errorMsg
+		m.loading = false
 	}
 
 	return m, nil
 }
 
 func (m model) View() string {
-	s := "Let's play a game!\n"
+	if m.loading {
+		return "Loading...\n"
+	}
 
-	for i, choice := range m.choices {
-		cursor := " "
-		if m.cursor == i {
-			cursor = ">"
+	if m.errorMsg != (errorMsg{}) {
+		return fmt.Sprintf("Error: %s\n", m.errorMsg.message)
+	}
+
+	s := "You have issues! \n"
+	for i, issue := range m.issues {
+		if i == m.cursor {
+			s += "> "
+		} else {
+			s += "  "
 		}
 
-		checked := " "
-		if _, ok := m.selected[i]; ok {
-			checked = "x"
-		}
-
-		s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice)
+		s += fmt.Sprintf("[%s]: %s\n", issue.State.Name, issue.Title)
 	}
 
 	s += "\nPress q to quit\n"
@@ -74,7 +94,7 @@ func (m model) View() string {
 }
 
 func main() {
-	p := tea.NewProgram(initalModel())
+	p := tea.NewProgram(initialModel())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
