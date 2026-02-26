@@ -22,6 +22,7 @@ type model struct {
 	visibleIssuesCount int
 	offset             int
 	headerHeight       int
+	includeDone        bool
 }
 
 func initialModel() model {
@@ -32,6 +33,7 @@ func initialModel() model {
 		headerHeight: 3,
 		spinner:      s,
 		loading:      true,
+		includeDone:  false,
 	}
 }
 
@@ -45,32 +47,34 @@ type errorMsg struct {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(fetchIssuesCmd, m.spinner.Tick)
+	return tea.Batch(fetchIssuesCmd(m.includeDone), m.spinner.Tick)
 }
 
-func fetchIssuesCmd() tea.Msg {
-	issues, err := client.FetchIssues(false)
+func fetchIssuesCmd(includeDone bool) tea.Cmd {
+	return func() tea.Msg {
+		issues, err := client.FetchIssues(includeDone)
 
-	if err != nil {
-		return issuesLoadedMsg{nil, errorMsg{err.Error()}}
+		if err != nil {
+			return issuesLoadedMsg{nil, errorMsg{err.Error()}}
+		}
+
+		var stateOrder = map[string]int{
+			"In Progress": 0,
+			"In Review":   1,
+			"Pending":     2,
+			"Todo":        3,
+			"Done":        4,
+			"Canceled":    5,
+		}
+		slices.SortFunc(issues, func(a, b client.Issue) int {
+			orderA := stateOrder[a.State.Name]
+			orderB := stateOrder[b.State.Name]
+
+			return orderA - orderB
+		})
+
+		return issuesLoadedMsg{issues, errorMsg{}}
 	}
-
-	var stateOrder = map[string]int{
-		"In Progress": 0,
-		"In Review":   1,
-		"Pending":     2,
-		"Todo":        3,
-		"Done":        4,
-		"Canceled":    5,
-	}
-	slices.SortFunc(issues, func(a, b client.Issue) int {
-		orderA := stateOrder[a.State.Name]
-		orderB := stateOrder[b.State.Name]
-
-		return orderA - orderB
-	})
-
-	return issuesLoadedMsg{issues, errorMsg{}}
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -86,7 +90,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cursor < m.offset {
 					m.offset--
 				}
-
 			}
 		case "down", "j":
 			if m.cursor < len(m.issues)-1 {
@@ -96,6 +99,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.offset++
 				}
 			}
+		case "e":
+			m.cursor = 0
+			m.loading = true
+			m.offset = 0
+			m.includeDone = !m.includeDone // Toogle include done
+			return m, fetchIssuesCmd(m.includeDone)
 		}
 	case issuesLoadedMsg:
 		m.issues = msg.issues
