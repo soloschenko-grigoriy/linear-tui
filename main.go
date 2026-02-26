@@ -6,21 +6,21 @@ import (
 	"os"
 
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 type model struct {
-	spinner  spinner.Model
-	issues   []client.Issue
-	loading  bool
-	errorMsg errorMsg
-	cursor   int
-	width    int
-	height   int
-	ready    bool
-	viewport viewport.Model
+	spinner            spinner.Model
+	issues             []client.Issue
+	loading            bool
+	errorMsg           errorMsg
+	cursor             int
+	width              int
+	height             int
+	visibleIssuesCount int
+	offset             int
+	headerHeight       int
 }
 
 func initialModel() model {
@@ -28,8 +28,9 @@ func initialModel() model {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	return model{
-		spinner: s,
-		loading: true,
+		headerHeight: 3,
+		spinner:      s,
+		loading:      true,
 	}
 }
 
@@ -65,63 +66,82 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+
+				if m.cursor < m.offset {
+					m.offset--
+				}
+
 			}
 		case "down", "j":
 			if m.cursor < len(m.issues)-1 {
 				m.cursor++
+
+				if m.cursor >= m.visibleIssuesCount+m.offset {
+					m.offset++
+				}
 			}
 		}
 	case issuesLoadedMsg:
 		m.issues = msg.issues
 		m.errorMsg = msg.errorMsg
 		m.loading = false
+		m.visibleIssuesCount = m.height - m.headerHeight
 
 	case tea.WindowSizeMsg:
-		if !m.ready {
-			m.viewport = viewport.New(msg.Width, msg.Height)
-			m.viewport.YPosition = 0
-			m.ready = true
-		} else {
-			m.width = msg.Width
-			m.height = msg.Height
-		}
-
+		m.width = msg.Width
+		m.height = msg.Height
+		m.visibleIssuesCount = m.height - m.headerHeight
 	}
 
 	var cmd1 tea.Cmd
 	m.spinner, cmd1 = m.spinner.Update(msg)
 
-	var cmd2 tea.Cmd
-	m.viewport, cmd2 = m.viewport.Update(msg)
-
-	return m, tea.Batch(cmd1, cmd2)
+	return m, tea.Batch(cmd1)
 }
 
-func RenderList(issues []client.Issue, cursor int, viewport viewport.Model) string {
-	width := int(float64(viewport.Width) * 0.6)
+func RenderList(m model) string {
+	issues := m.issues
+	cursor := m.cursor
+	width := int(float64(m.width) * 0.6)
 
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Width(width)
 	s := "You have issues! \n"
-	for i, issue := range issues {
-		if i == cursor {
+
+	end := m.offset + m.visibleIssuesCount
+	if end > len(issues) {
+		end = len(issues)
+	}
+	for i, issue := range (issues)[m.offset:end] {
+		if i+m.offset == cursor {
 			s += "> "
 		} else {
 			s += "  "
 		}
 
-		s += fmt.Sprintf("[%s]: %s\n", issue.State.Name, issue.Title)
+		maxLength := width - 20
+		title := issue.Title
+		if len(title) > maxLength {
+			title = title[:maxLength] + "..."
+		}
+		s += fmt.Sprintf("[%s]: %s\n", issue.State.Name, title)
 	}
-
-	s += "\nPress q to quit\n"
+	// s += fmt.Sprintf("\nh=%d visible=%d offset=%d", m.height, m.visibleIssuesCount, m.offset)
 
 	return style.Render(s)
 }
 
-func RenderPreview(issue client.Issue, viewport viewport.Model) string {
-	width := int(float64(viewport.Width) * 0.4)
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color("215")).Width(width)
+func RenderPreview(m model) string {
+	issue := m.issues[m.cursor]
+	width := int(float64(m.width) * 0.4)
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color("216")).Width(width)
 
 	return style.Render(fmt.Sprintf("Issue: %s\n", issue.Title))
+}
+
+func RenderFooter(m model) string {
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color("116"))
+
+	return style.Render("Press q to quit")
 }
 
 func (m model) View() string {
@@ -134,12 +154,12 @@ func (m model) View() string {
 	}
 
 	// m.viewport.SetContent()
-	list := RenderList(m.issues, m.cursor, m.viewport)
-	preview := RenderPreview(m.issues[m.cursor], m.viewport)
+	list := RenderList(m)
+	preview := RenderPreview(m)
+	footer := RenderFooter(m)
 	content := lipgloss.JoinHorizontal(lipgloss.Top, list, preview)
 
-	m.viewport.SetContent(content)
-	return m.viewport.View()
+	return lipgloss.JoinVertical(lipgloss.Left, content, footer)
 }
 
 func main() {
