@@ -17,6 +17,7 @@ type Issue struct {
 		Position float64 `json:"position"`
 	} `json:"state"`
 	Priority int `json:"priority"`
+	URL      string
 }
 
 type graphqlReqBody struct {
@@ -42,7 +43,7 @@ func FetchIssues(includeDone bool) ([]Issue, error) {
 		states = `["In Progress", "In Review", "Todo", "Pending"]`
 	}
 
-	query := fmt.Sprintf(`{ issues(filter: { assignee: { isMe: { eq: true } }, cycle: { isActive: { eq: true } }, state: { name: { in: %s } } }, first: 100) { nodes { id title description state { name position } priority } } }`, states)
+	query := fmt.Sprintf(`{ issues(filter: { assignee: { isMe: { eq: true } }, cycle: { isActive: { eq: true } }, state: { name: { in: %s } } }, first: 100) { nodes { id title description url state { name position } priority } } }`, states)
 
 	reqBody := graphqlReqBody{
 		Query: query,

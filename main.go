@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"linear-tui/client"
 	"os"
+	"os/exec"
 	"slices"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -105,6 +106,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.offset = 0
 			m.includeDone = !m.includeDone // Toogle include done
 			return m, fetchIssuesCmd(m.includeDone)
+		case "o":
+			if m.cursor >= 0 || m.cursor < len(m.issues) {
+				url := m.issues[m.cursor].URL
+				return m, func() tea.Msg {
+					exec.Command("open", url).Start()
+					return nil
+				}
+			}
 		}
 	case issuesLoadedMsg:
 		m.issues = msg.issues
