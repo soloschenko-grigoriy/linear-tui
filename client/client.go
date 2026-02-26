@@ -13,7 +13,8 @@ type Issue struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	State       struct {
-		Name string `json:"name"`
+		Name     string  `json:"name"`
+		Position float64 `json:"position"`
 	} `json:"state"`
 	Priority int `json:"priority"`
 }
@@ -32,7 +33,7 @@ func FetchIssues() ([]Issue, error) {
 		return nil, fmt.Errorf("LINEAR_API_KEY not set")
 	}
 
-	query := `{"query": "{ issues(first: 20) { nodes { id title description state { name } priority } } }" }`
+	query := `{"query": "{ issues(filter: { assignee: { isMe: { eq: true } }, cycle: { isActive: { eq: true } } }, first: 100) { nodes { id title description state { name position } priority } } }"}`
 
 	body := bytes.NewBuffer([]byte(query))
 

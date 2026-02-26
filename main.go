@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"linear-tui/client"
 	"os"
+	"slices"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -53,6 +54,21 @@ func fetchIssuesCmd() tea.Msg {
 	if err != nil {
 		return issuesLoadedMsg{nil, errorMsg{err.Error()}}
 	}
+
+	var stateOrder = map[string]int{
+		"In Progress": 0,
+		"In Review":   1,
+		"Pending":     2,
+		"Todo":        3,
+		"Done":        4,
+		"Canceled":    5,
+	}
+	slices.SortFunc(issues, func(a, b client.Issue) int {
+		orderA := stateOrder[a.State.Name]
+		orderB := stateOrder[b.State.Name]
+
+		return orderA - orderB
+	})
 
 	return issuesLoadedMsg{issues, errorMsg{}}
 }
@@ -105,6 +121,10 @@ func RenderList(m model) string {
 	width := int(float64(m.width) * 0.6)
 
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Width(width)
+	if len(issues) == 0 {
+		return style.Render("No issues found")
+	}
+
 	s := "You have issues! \n"
 
 	end := m.offset + m.visibleIssuesCount
@@ -131,6 +151,10 @@ func RenderList(m model) string {
 }
 
 func RenderPreview(m model) string {
+	if len(m.issues) == 0 {
+		return ""
+	}
+
 	issue := m.issues[m.cursor]
 	width := int(float64(m.width) * 0.4)
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("216")).Width(width)
