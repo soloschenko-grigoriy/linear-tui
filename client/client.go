@@ -19,6 +19,10 @@ type Issue struct {
 	Priority int `json:"priority"`
 }
 
+type graphqlReqBody struct {
+	Query string `json:"query"`
+}
+
 type Response struct {
 	Data struct {
 		Issues struct {
@@ -27,15 +31,29 @@ type Response struct {
 	} `json:"data"`
 }
 
-func FetchIssues() ([]Issue, error) {
+func FetchIssues(includeDone bool) ([]Issue, error) {
 	key := os.Getenv("LINEAR_API_KEY")
 	if key == "" {
 		return nil, fmt.Errorf("LINEAR_API_KEY not set")
 	}
 
-	query := `{"query": "{ issues(filter: { assignee: { isMe: { eq: true } }, cycle: { isActive: { eq: true } } }, first: 100) { nodes { id title description state { name position } priority } } }"}`
+	var states = `["In Progress", "In Review", "Todo", "Done", "Pending"]`
+	if !includeDone {
+		states = `["In Progress", "In Review", "Todo", "Pending"]`
+	}
 
-	body := bytes.NewBuffer([]byte(query))
+	query := fmt.Sprintf(`{ issues(filter: { assignee: { isMe: { eq: true } }, cycle: { isActive: { eq: true } }, state: { name: { in: %s } } }, first: 100) { nodes { id title description state { name position } priority } } }`, states)
+
+	reqBody := graphqlReqBody{
+		Query: query,
+	}
+
+	jsonBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	body := bytes.NewBuffer(jsonBytes)
 
 	req, err := http.NewRequest("POST", "https://api.linear.app/graphql", body)
 

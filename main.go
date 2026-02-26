@@ -49,7 +49,7 @@ func (m model) Init() tea.Cmd {
 }
 
 func fetchIssuesCmd() tea.Msg {
-	issues, err := client.FetchIssues()
+	issues, err := client.FetchIssues(false)
 
 	if err != nil {
 		return issuesLoadedMsg{nil, errorMsg{err.Error()}}
@@ -120,6 +120,15 @@ func RenderList(m model) string {
 	cursor := m.cursor
 	width := int(float64(m.width) * 0.6)
 
+	var stateColors = map[string]string{
+		"In Review":   "#89b4fa", // Blue — active work
+		"Pending":     "#7f849c", // Mauve — waiting for review
+		"In Progress": "#f9e2af", // Yellow — on hold
+		"Todo":        "#a6adc8", // Subtext 0 — not started, muted
+		"Done":        "#a6e3a1", // Green — completed
+		"Canceled":    "#6c7086", // Overlay 0 — dimmed/inactive
+	}
+
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Width(width)
 	if len(issues) == 0 {
 		return style.Render("No issues found")
@@ -143,7 +152,12 @@ func RenderList(m model) string {
 		if len(title) > maxLength {
 			title = title[:maxLength] + "..."
 		}
-		s += fmt.Sprintf("[%s]: %s\n", issue.State.Name, title)
+
+		color := stateColors[issue.State.Name]
+		stateStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+
+		stateStr := fmt.Sprintf("[%s]", issue.State.Name)
+		s += fmt.Sprintf("%s: %s\n", stateStyle.Render(stateStr), title)
 	}
 	// s += fmt.Sprintf("\nh=%d visible=%d offset=%d", m.height, m.visibleIssuesCount, m.offset)
 
