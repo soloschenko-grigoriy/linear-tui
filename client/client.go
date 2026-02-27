@@ -12,12 +12,14 @@ type Issue struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
-	State       struct {
-		Name     string  `json:"name"`
-		Position float64 `json:"position"`
-	} `json:"state"`
-	Priority int `json:"priority"`
-	URL      string
+	State       State  `json:"state"`
+	Priority    int    `json:"priority"`
+	URL         string `json:"url"`
+}
+
+type State struct {
+	Name     string  `json:"name"`
+	Position float64 `json:"position"`
 }
 
 type graphqlReqBody struct {

@@ -3,12 +3,16 @@ package main
 import (
 	"fmt"
 	"linear-tui/client"
+	"linear-tui/components"
+	"linear-tui/styles"
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -24,6 +28,7 @@ type model struct {
 	offset             int
 	headerHeight       int
 	includeDone        bool
+	previewOffset      int
 }
 
 func initialModel() model {
@@ -31,10 +36,12 @@ func initialModel() model {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	return model{
-		headerHeight: 3,
-		spinner:      s,
-		loading:      true,
-		includeDone:  false,
+		offset:        0,
+		previewOffset: 0,
+		headerHeight:  3,
+		spinner:       s,
+		loading:       true,
+		includeDone:   false,
 	}
 }
 
@@ -88,6 +95,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor > 0 {
 				m.cursor--
 
+				m.previewOffset = 0
+
 				if m.cursor < m.offset {
 					m.offset--
 				}
@@ -95,10 +104,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			if m.cursor < len(m.issues)-1 {
 				m.cursor++
-
+				m.previewOffset = 0
 				if m.cursor >= m.visibleIssuesCount+m.offset {
 					m.offset++
 				}
+			}
+		case "ctrl+d":
+			m.previewOffset++
+		case "ctrl+u":
+			if m.previewOffset > 0 {
+				m.previewOffset--
 			}
 		case "e":
 			m.cursor = 0
@@ -138,15 +153,6 @@ func RenderList(m model) string {
 	cursor := m.cursor
 	width := int(float64(m.width) * 0.6)
 
-	var stateColors = map[string]string{
-		"In Review":   "#89b4fa", // Blue — active work
-		"Pending":     "#7f849c", // Mauve — waiting for review
-		"In Progress": "#f9e2af", // Yellow — on hold
-		"Todo":        "#a6adc8", // Subtext 0 — not started, muted
-		"Done":        "#a6e3a1", // Green — completed
-		"Canceled":    "#6c7086", // Overlay 0 — dimmed/inactive
-	}
-
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Width(width)
 	if len(issues) == 0 {
 		return style.Render("No issues found")
@@ -171,11 +177,8 @@ func RenderList(m model) string {
 			title = title[:maxLength] + "..."
 		}
 
-		color := stateColors[issue.State.Name]
-		stateStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
-
-		stateStr := fmt.Sprintf("[%s]", issue.State.Name)
-		s += fmt.Sprintf("%s: %s\n", stateStyle.Render(stateStr), title)
+		stateStr := components.RenderState(issue.State)
+		s += fmt.Sprintf("%s: %s\n", stateStr, title)
 	}
 	// s += fmt.Sprintf("\nh=%d visible=%d offset=%d", m.height, m.visibleIssuesCount, m.offset)
 
@@ -189,9 +192,52 @@ func RenderPreview(m model) string {
 
 	issue := m.issues[m.cursor]
 	width := int(float64(m.width) * 0.4)
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color("216")).Width(width)
 
-	return style.Render(fmt.Sprintf("Issue: %s\n", issue.Title))
+	title := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(styles.TitleColor)).
+		Bold(true).
+		Width(width).
+		Render(fmt.Sprintf("%s\n", issue.Title))
+
+	state := components.RenderState(issue.State)
+	priorty := components.RenderPriorityStyle(issue.Priority)
+
+	subtitle := lipgloss.NewStyle().
+		Width(width).
+		BorderBottom(true).
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color(styles.DividerColor)).
+		Render(fmt.Sprintf("%s %s\n", state, priorty))
+
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(width),
+	)
+
+	description, _ := renderer.Render(issue.Description)
+
+	fullContent := lipgloss.JoinVertical(lipgloss.Left, title, subtitle, description)
+
+	lines := strings.Split(fullContent, "\n")
+
+	visibleLines := m.height - m.headerHeight
+
+	if m.previewOffset > len(lines)-visibleLines {
+		m.previewOffset = len(lines) - visibleLines
+	}
+	if m.previewOffset < 0 {
+		m.previewOffset = 0
+	}
+
+	end := m.previewOffset + visibleLines
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	visible := strings.Join(lines[m.previewOffset:end], "\n")
+	style := lipgloss.NewStyle().Width(width).Height(visibleLines)
+
+	return style.Render(visible)
 }
 
 func RenderFooter(m model) string {
@@ -209,7 +255,6 @@ func (m model) View() string {
 		return fmt.Sprintf("Error: %s\n", m.errorMsg.message)
 	}
 
-	// m.viewport.SetContent()
 	list := RenderList(m)
 	preview := RenderPreview(m)
 	footer := RenderFooter(m)
